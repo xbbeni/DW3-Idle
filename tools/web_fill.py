@@ -13,7 +13,9 @@ list from a release of the port at the same game code (UPSTREAM: the folder
 of its unzipped release, its dw2003.exe and dw2003.fill). The exe's debug
 info names the variable each byte is in; the wasm's link map gives where that
 variable is in the wasm. A variable whose size differs between the two is
-left as it is and reported, as its layout may differ.
+left as it is and reported, as its layout may differ (the build fails on
+it). A variable the wasm's link map doesn't list was dropped by the linker as
+unused, so it isn't in the wasm at all.
 
     python tools/web_fill.py <upstream folder> <build-web folder>
 """
@@ -73,6 +75,8 @@ def type_size(die):
             return None
         if "DW_AT_byte_size" in die.attributes:
             return die.attributes["DW_AT_byte_size"].value
+        if die.tag in ("DW_TAG_pointer_type", "DW_TAG_reference_type"):
+            return 4  # clang leaves a pointer's size out; the exe is 32-bit
         if die.tag == "DW_TAG_array_type":
             size = type_size(die.get_DIE_from_attribute("DW_AT_type"))
             for c in die.iter_children():
@@ -233,11 +237,11 @@ def main(upstream, web):
             return None  # not in a data segment (zeros: .bss, or packed out)
         return segs[i][1] + addr - segs[i][0]
 
-    lines, crc, done, missing, resized, notdata = [], 0, 0, collections.Counter(), collections.Counter(), 0
+    lines, crc, done, gone, resized, notdata = [], 0, 0, collections.Counter(), collections.Counter(), 0
     for unit, names, size, at, n, src, off in parts:
         hit = next((where[(unit, nm)] for nm in names if (unit, nm) in where), None)
         if hit is None:
-            missing[unit] += n
+            gone[unit] += n  # not linked in: wasm-ld dropped it, unused (file_table.c's FILE_SECTORS)
             continue
         addr, wsize, kind = hit
         if wsize != size:
@@ -259,9 +263,9 @@ def main(upstream, web):
     report = [f"## The game's tables\n",
               f"{done} of the {total} bytes the exe takes out are zeroed in dw3.wasm and listed in dw3.fill "
               f"({len(lines)} pieces); {outside} are padding between the exe's variables, {notdata} are zeros in the wasm."]
-    if missing:
-        report.append(f"\nNot found in the wasm ({sum(missing.values())} bytes): "
-                      + ", ".join(f"{u} {n}" for u, n in missing.most_common(20)))
+    if gone:
+        report.append(f"\nNot linked into the wasm (unused, so not in it; {sum(gone.values())} bytes): "
+                      + ", ".join(f"{u} {n}" for u, n in gone.most_common(20)))
     if resized:
         report.append(f"\nLeft in the wasm, sized differently than in the exe ({sum(resized.values())} bytes): "
                       + ", ".join(f"{u} {n}" for u, n in resized.most_common(20)))
@@ -269,7 +273,7 @@ def main(upstream, web):
     with open(web / "report.md", "a") as f:
         f.write("\n" + text)
     print(text)
-    return sum(missing.values()) + sum(resized.values())
+    return sum(resized.values())
 
 
 if __name__ == "__main__":
