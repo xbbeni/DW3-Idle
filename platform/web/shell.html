@@ -45,7 +45,7 @@
   const $ = (id) => document.getElementById(id);
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
-  const ROM_FILENAME = 'game.chd';
+  const ROM_FILENAME = 'Digimon World 2003 (Europe) (En,Fr,De,Es,It).chd';
   const ROM_URL = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
 
   let synced = Promise.resolve();
@@ -86,7 +86,7 @@
     }
   }
 
-  async function downloadAndExtract() {
+async function downloadAndExtract() {
     try {
       status('A descarregar a ROM do Hugging Face (400MB)...');
       const response = await fetch(ROM_URL);
@@ -117,6 +117,7 @@
 
       status('A injetar ROM no emulador para extração…');
       try { FS.mkdir('/disc'); } catch (e) {}
+      // Usa o nome exato do arquivo do Hugging Face aqui
       FS.writeFile('/disc/' + ROM_FILENAME, chunksAll);
 
       status('A extrair os dados do jogo (pode levar alguns segundos)…');
@@ -124,6 +125,7 @@
       
       let code;
       try {
+        // A linha que você perguntou fica exatamente aqui dentro:
         code = callMain(['--extract', '/disc/' + ROM_FILENAME]);
       } catch (e) {
         console.error(e);
