@@ -46,6 +46,11 @@ LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GR
            "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=1MB",
            "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0",
            "-sINVOKE_RUN=0", "-sEXPORTED_RUNTIME_METHODS=callMain,FS",
+           # the game's function tables hold functions cast to other types
+           # (heap.c's HEAP, the task tables...), called through K&R `()`
+           # pointers: WebAssembly's call_indirect traps on any mismatch, the
+           # R3000 and x86 didn't care. This makes indirect calls tolerate it.
+           "-sEMULATE_FUNCTION_POINTER_CASTS=1",
            # while the web build is being brought up: function names in the
            # browser's stack traces, and Emscripten's own checks
            "--profiling-funcs", "-sASSERTIONS=1", "-sSTACK_OVERFLOW_CHECK=2",

@@ -1,0 +1,28 @@
+--- a/src/engine/system/heap.c
++++ b/src/engine/system/heap.c
+@@ -153,12 +153,25 @@
+     return ptr;
+ }
+ 
++#ifdef NATIVE
++/* Native: the block returned for real. On the PSX it was left in v0 by
++   tryAllocMemHigh; x86 happened to leave it in eax, WebAssembly has nothing */
++void *allocMemHigh(s32 size, s32 tag) {
++    void *ptr;
++
++    while ((ptr = tryAllocMemHigh(size, tag)) == NULL) {
++        FILE_CACHE.evictOldest();
++    }
++    return ptr;
++}
++#else
+ /* The block is returned in v0, left there by tryAllocMemHigh */
+ void allocMemHigh(s32 size, s32 tag) {
+     while (tryAllocMemHigh(size, tag) == 0) {
+         FILE_CACHE.evictOldest();
+     }
+ }
++#endif
+ 
+ /* allocMem, cleared */
+ void *allocMemZeroed(s32 size, s32 tag) {

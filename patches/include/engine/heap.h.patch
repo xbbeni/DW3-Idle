@@ -13,3 +13,15 @@
  
  /* MemBlock.tag */
  #define MEM_FREE 0
+@@ -50,7 +55,11 @@
+ void zeroMem(void *dst, s32 size);
+ void fillMem(s8 *dst, s8 value, s32 count);
+ void *allocMem(s32 size, s32 tag);
++#ifdef NATIVE
++void *allocMemHigh(s32 size, s32 tag); /* heap.c's native version returns its block */
++#else
+ void allocMemHigh(s32 size, s32 tag);
++#endif
+ void *allocMemZeroed(s32 size, s32 tag);
+ void lockMem(void *ptr, s32 lock);
+ void *tryAllocMem(u32 size, s32 tag);
