@@ -14,11 +14,10 @@
   #panel { width: min(960px, 100%); padding: 0 16px 12px; box-sizing: border-box; }
   #status { margin: 8px 0; min-height: 1.5em; }
   button, label.btn { background: #2b5bd7; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px;
-                      font: inherit; cursor: pointer; display: inline-block; }
+                     font: inherit; cursor: pointer; display: inline-block; }
   button:disabled { background: #39425a; cursor: default; }
-  input[type=file] { display: none; }
-  canvas { display: none; background: #000; width: min(960px, 100vw); aspect-ratio: 4 / 3; outline: none; }
   .hidden { display: none !important; }
+  canvas { display: none; background: #000; width: min(960px, 100vw); aspect-ratio: 4 / 3; outline: none; }
   #speed { display: none; gap: 6px; align-items: center; padding: 8px 0; color: #8a97ad; font-size: 13px; }
   #speed button { padding: 6px 12px; background: #39425a; }
   #speed button.on { background: #2b5bd7; }
@@ -28,16 +27,10 @@
 <body>
 <header>
   <h1>DW3 (web)</h1>
-  <p class="note">Projeto de fã, sem relação com a Bandai Namco. Nada do jogo vem com esta página: ela lê o
-    disco do próprio jogador (Digimon World 2003, Europa, SLES-03936, em .cue + .bin), e o que for lido
-    fica só neste navegador.</p>
+  <p class="note">Projeto de fã, sem relação com a Bandai Namco. Carregamento automático da ROM do jogo integrado.</p>
 </header>
 <div id="panel">
-  <div id="status">Carregando…</div>
-  <div id="pick" class="hidden">
-    <label class="btn" for="files">Escolher o .cue e o .bin do teu disco</label>
-    <input id="files" type="file" multiple accept=".cue,.bin,.iso">
-  </div>
+  <div id="status">A preparar o carregamento automático…</div>
   <div id="play" class="hidden">
     <button id="start">Jogar</button>
     <small class="link" id="forget">apagar os dados do jogo deste navegador</small>
@@ -53,9 +46,7 @@
   console.log('dw3: page script started');
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
-  // the game's files live in the browser's file storage (OPFS) and come into
-  // memory one at a time when the game opens them (platform/web.c); only the
-  // saves are in IndexedDB, which loads whole
+  
   let synced = Promise.resolve();
   function sync(load) {
     synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
@@ -65,46 +56,69 @@
     return (await navigator.storage.getDirectory()).getDirectoryHandle(OPFS_DIR, { create });
   }
   async function extracted() {
-    try { await (await opfsDir(false)).getFileHandle('SLES_039.36'); return true; } catch (e) { return false; }
+    try { await (await opfsDir(false)).getFileHandle('DMW3.chd'); return true; } catch (e) { return false; }
   }
-  // the extracted tree, from memory into OPFS; SLES_039.36 last, as the marker
-  async function storeData() {
-    const files = [];
-    (function walk(path) {
-      for (const name of FS.readdir(path)) {
-        if (name === '.' || name === '..') continue;
-        const full = path + '/' + name;
-        if (FS.isDir(FS.stat(full).mode)) walk(full); else files.push(full.slice(DATA.length + 1));
+
+  async function downloadAndStoreROM() {
+    try {
+      status('A descarregar a ROM (DMW3.chd - 400MB)...');
+      const romUrl = 'https://github.com/xbbeni/DW3-Idle/releases/download/v1.0-rom/DMW3.chd';
+      
+      const response = await fetch(romUrl);
+      if (!response.ok) throw new Error('Falha no download: ' + response.statusText);
+
+      const reader = response.body.getReader();
+      const contentLength = +response.headers.get('Content-Length');
+      let receivedLength = 0;
+      let chunks = [];
+
+      while(true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        receivedLength += value.length;
+        if (contentLength) {
+          let percent = Math.round((receivedLength / contentLength) * 100);
+          status(`A descarregar a ROM… ${percent}%`);
+        }
       }
-    })(DATA);
-    files.sort((a, b) => (a === 'SLES_039.36') - (b === 'SLES_039.36'));
-    const root = await opfsDir(true);
-    let n = 0;
-    for (const rel of files) {
-      let dir = root;
-      const parts = rel.split('/');
-      for (const d of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(d, { create: true });
-      const w = await (await dir.getFileHandle(parts[parts.length - 1], { create: true })).createWritable();
-      await w.write(FS.readFile(DATA + '/' + rel));
-      await w.close();
-      FS.unlink(DATA + '/' + rel); // memory back as it goes
-      if (++n % 50 === 0) status('Guardando no navegador… ' + Math.round(100 * n / files.length) + '%');
+
+      let chunksAll = new Uint8Array(receivedLength);
+      let position = 0;
+      for(let chunk of chunks) {
+        chunksAll.set(chunk, position);
+        position += chunk.length;
+      }
+
+      status('A guardar a ROM no navegador (OPFS)…');
+      const root = await opfsDir(true);
+      const handle = await root.getFileHandle('DMW3.chd', { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(chunksAll);
+      await writable.close();
+
+      status('ROM guardada com sucesso!');
+      $('play').classList.remove('hidden');
+    } catch (err) {
+      status('Erro ao descarregar a ROM: ' + err.message);
+      console.error(err);
     }
   }
+
   var Module = {
     canvas: $('canvas'),
     noInitialRun: true,
     print: (t) => console.log(t),
     printErr: (t) => console.warn(t),
-    // Emscripten's own progress, while the wasm downloads; the page's steps after that are its own
-    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('Baixando o jogo…'); },
+    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('A carregar os arquivos do emulador/wasm…'); },
     preRun: [() => {
-      indexedDB.deleteDatabase('/dw3'); // the first web build kept the whole game there
+      indexedDB.deleteDatabase('/dw3');
       FS.mkdirTree(DATA);
       FS.mkdirTree(SAVES);
       FS.mount(IDBFS, {}, SAVES);
       addRunDependency('dw3-saves');
       sync(true).then(() => removeRunDependency('dw3-saves'));
+      
       addRunDependency('dw3-fill');
       fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
         .then((t) => FS.writeFile('/dw3.fill', t))
@@ -113,74 +127,40 @@
     }],
     onRuntimeInitialized: async () => {
       if (!navigator.storage || !navigator.storage.getDirectory) {
-        status('Este navegador não tem o armazenamento de arquivos que a página usa (OPFS). Usa o Chrome, Edge ou Firefox atualizado.');
+        status('Este navegador não suporta armazenamento OPFS. Usa um navegador atualizado.');
         return;
       }
       if (await extracted()) {
-        status('O jogo já foi lido do teu disco.');
+        status('O jogo está pronto para iniciar.');
         $('play').classList.remove('hidden');
       } else {
-        status('Primeira vez: escolhe os dois arquivos da imagem do teu disco.');
-        $('pick').classList.remove('hidden');
+        await downloadAndStoreROM();
       }
     },
   };
-  $('files').addEventListener('change', async (ev) => {
-    const files = [...ev.target.files];
-    const cue = files.find((f) => /\.cue$/i.test(f.name)) || files.find((f) => /\.iso$/i.test(f.name));
-    if (!cue) { status('Falta o arquivo .cue (ou .iso).'); return; }
-    $('pick').classList.add('hidden');
-    try { FS.mkdir('/disc'); } catch (e) {}
-    for (const f of files) {
-      status('Lendo ' + f.name + '…');
-      FS.writeFile('/disc/' + f.name, new Uint8Array(await f.arrayBuffer()));
-    }
-    status('Extraindo o jogo (pode levar alguns minutos)…');
-    await new Promise((r) => setTimeout(r, 50));
-    let code;
-    try {
-      code = callMain(['--extract', '/disc/' + cue.name]);
-    } catch (e) {
-      status('Erro na extração: ' + e.message + ' | ' + String(e.stack || '').split('\n').slice(0, 8).join(' | '));
-      console.error(e);
-      return;
-    }
-    for (const f of files) { try { FS.unlink('/disc/' + f.name); } catch (e) {} }
-    if (code !== 0) {
-      status('A leitura falhou (código ' + code + '). Confere se é a versão europeia e se o .bin está junto do .cue.');
-      $('pick').classList.remove('hidden');
-      return;
-    }
-    status('Guardando no navegador…');
-    try {
-      await storeData();
-    } catch (e) {
-      status('Não consegui guardar no navegador: ' + e.message);
-      return;
-    }
-    location.reload();
-  });
+
   $('start').addEventListener('click', () => {
     $('panel').classList.add('hidden');
     $('canvas').style.display = 'block';
     $('canvas').focus();
     setInterval(() => sync(false), 10000);
     addEventListener('pagehide', () => FS.syncfs(false, () => {}));
-    // before the game runs: the one call into the module the buttons need
+    
     const ffIndex = Module.ccall('native_web_speed_address', 'number', [], []) >> 2;
-    callMain([]);
+    callMain([]); // Inicia o jogo principal
+    
     const speed = $('speed');
     speed.style.display = 'flex';
     const mark = (x) => speed.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.x === x));
     speed.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       Module.HEAP32[ffIndex] = +b.dataset.x;
       mark(+b.dataset.x);
-      $('canvas').focus(); // the keys go back to the game
+      $('canvas').focus();
     }));
-    // Tab and the options menu change it too: follow them
     mark(1);
     setInterval(() => mark(Module.HEAP32[ffIndex]), 500);
   });
+
   $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
     try { await (await navigator.storage.getDirectory()).removeEntry(OPFS_DIR, { recursive: true }); } catch (e) {}
