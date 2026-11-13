@@ -43,6 +43,15 @@ jobs:
       - name: report
         if: always()
         run: cat native/build-web/report.md 2>/dev/null || true
+      - name: smoke test (the page loads, its wasm starts and asks for the disc)
+        run: |
+          cd native/build-web
+          python3 -m http.server 8000 > /dev/null 2>&1 &
+          sleep 2
+          google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=30000 \
+            --dump-dom http://localhost:8000/index.html > dom.html 2> chrome.log || true
+          grep -o '<div id="status">[^<]*</div>' dom.html || true
+          grep -q 'Primeira vez' dom.html || { tail -40 chrome.log; exit 1; }
       - name: the page (the build's own files; none of the game)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
