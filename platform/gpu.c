@@ -288,7 +288,7 @@ uint32_t *BreakDraw(void) {
 
 void DrawOTag(uint32_t *p);
 
-int ContinueDraw(uint32_t *insaddr, uint32_t *contaddr) {
+/* void, as libgpu.h has it (WebAssembly traps on a mismatched signature) */
+void ContinueDraw(uint32_t *insaddr, uint32_t *contaddr) {
     DrawOTag(insaddr);
-    return 0;
 }

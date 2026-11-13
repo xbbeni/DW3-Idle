@@ -680,7 +680,15 @@ void GsSetProjection(int h) {
 
 /* A light: its direction into a row of the light matrix, its color into a
    column of the color matrix */
-void GsSetFlatLight(int id, GsF_LIGHT *lt) {
+static void set_flat_light(int id, GsF_LIGHT *lt);
+
+/* int, as libgs.h has it (WebAssembly traps on a mismatched signature) */
+int GsSetFlatLight(int id, GsF_LIGHT *lt) {
+    set_flat_light(id, lt);
+    return 0;
+}
+
+static void set_flat_light(int id, GsF_LIGHT *lt) {
     double len = sqrt((double)lt->vx * lt->vx + (double)lt->vy * lt->vy + (double)lt->vz * lt->vz);
 
     /* as libgs: a zero direction changes nothing; the color is c * 4096 / 255 */
