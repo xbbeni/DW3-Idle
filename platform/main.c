@@ -276,7 +276,9 @@ int main(int argc, char **argv) {
 
     char exe[1100];
 
-    install_crash_handler();
+#ifndef __EMSCRIPTEN__
+    install_crash_handler(); /* crash.c, Windows only: the browser's console has the stack */
+#endif
     read_ini(1);
     if (env != NULL) {
         snprintf(s_data, sizeof s_data, "%s", env);
