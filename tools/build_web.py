@@ -45,7 +45,7 @@ PLATFORM_CFLAGS = ["-std=c11", "-c", "-O2", "-g", "-Wall", "-Wno-unused-paramete
 LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GROWTH=1",
            "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=1MB",
            "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0",
-           "-sINVOKE_RUN=0", "-sEXPORTED_RUNTIME_METHODS=callMain,FS",
+           "-sINVOKE_RUN=0", "-sEXPORTED_RUNTIME_METHODS=callMain,FS,ccall",
            # the game's function tables hold functions cast to other types
            # (heap.c's HEAP, the task tables...), called through K&R `()`
            # pointers: WebAssembly's call_indirect traps on any mismatch, the
