@@ -34,6 +34,49 @@ GL_FUNCS(X)
 #undef X
 #define GL(f) p_##f
 
+#ifdef __EMSCRIPTEN__
+/* WebGL 2 (OpenGL ES 3.0) lacks three of desktop GL's: glClearDepth has a
+   float twin, and the timer queries (the perf meter's only) are left out */
+static void (APIENTRY *p_glClearDepthf)(GLfloat);
+
+static void APIENTRY web_glClearDepth(GLdouble d) {
+    p_glClearDepthf((GLfloat)d);
+}
+
+static void APIENTRY web_glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params) {
+    (void)id, (void)pname;
+    *params = 0; /* never available: gq_frame reads nothing */
+}
+
+static void APIENTRY web_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64 *params) {
+    (void)id, (void)pname;
+    *params = 0;
+}
+
+/* the desktop function, or its web stand-in */
+static void *web_proc(const char *name) {
+    void *f = (void *)SDL_GL_GetProcAddress(name);
+
+    if (f != NULL) {
+        return f;
+    }
+    if (SDL_strcmp(name, "glClearDepth") == 0 &&
+        (p_glClearDepthf = (void (APIENTRY *)(GLfloat))SDL_GL_GetProcAddress("glClearDepthf")) != NULL) {
+        return (void *)web_glClearDepth;
+    }
+    if (SDL_strcmp(name, "glGetQueryObjectiv") == 0) {
+        return (void *)web_glGetQueryObjectiv;
+    }
+    if (SDL_strcmp(name, "glGetQueryObjectui64v") == 0) {
+        return (void *)web_glGetQueryObjectui64v;
+    }
+    return NULL;
+}
+#define GL_PROC(name) web_proc(name)
+#else
+#define GL_PROC(name) SDL_GL_GetProcAddress(name)
+#endif
+
 /* --- shaders --- */
 
 static const char *MAIN_VS =
@@ -430,6 +473,9 @@ static int s_qn[QSLOTS], s_qslot, s_qopen = -1, s_q_made;
 static void gq_begin(int kind) {
     int n;
 
+#ifdef __EMSCRIPTEN__
+    return; /* no GL_TIME_ELAPSED in WebGL 2 */
+#endif
     if (!perf_on() || s_qopen >= 0) {
         return;
     }
@@ -1251,7 +1297,7 @@ int gl_init(SDL_Window *window) {
         return 0;
     }
 #define X(f)                                                         \
-    if ((p_##f = (__typeof__(f) *)SDL_GL_GetProcAddress(#f)) == NULL) { \
+    if ((p_##f = (__typeof__(f) *)GL_PROC(#f)) == NULL) {               \
         LOG("gl: no %s", #f);                                        \
         return 0;                                                    \
     }
