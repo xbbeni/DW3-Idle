@@ -43,8 +43,10 @@ SDL_C = [f"-I{SDL_WEB}/include"] if SDL_WEB else ["--use-port=sdl3"]
 SDL_L = [f"-L{SDL_WEB}/lib", "-lSDL3"] if SDL_WEB else ["--use-port=sdl3"]
 PLATFORM_CFLAGS = ["-std=c11", "-c", "-O2", "-g", "-Wall", "-Wno-unused-parameter", "-D_GNU_SOURCE", *SDL_C]
 LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GROWTH=1",
-           "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=4MB",
-           "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0"]
+           "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=1MB",
+           "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0",
+           "-sINVOKE_RUN=0", "-sEXPORTED_RUNTIME_METHODS=callMain,FS",
+           f"--shell-file={NATIVE / 'platform/web/shell.html'}"]
 
 COMMON = re.compile(r"^(@\S+) = common ", re.M)
 GLOBAL_DEF = re.compile(r"^@([\w.$]+) = (?!.*\b(?:internal|private)\b)(?!.*\bexternal\b)")
@@ -70,6 +72,11 @@ def emit_ir(src):
     # common symbols become plain definitions, as build.py's overlay_sections
     # does (wasm-ld doesn't merge them with the other files' references)
     ll_text = COMMON.sub(r"\1 = ", ll_text)
+    # each overlay's variables in one named segment, as build.py's COFF
+    # sections: wasm-ld merges a name's segments into one and defines
+    # __start_<name>/__stop_<name> around it (platform/memory.c)
+    group = "g" if rel.parts[0] == "engine" else "s" if rel.as_posix().startswith(build.SUB_OVERLAYS) else "m"
+    ll_text = build.overlay_sections(ll_text, group).replace(f'section ".data$dw3{group}1"', f'section "dw3_{group}"')
     ll.write_text(ll_text)
     return rel, ll, None
 
@@ -175,7 +182,7 @@ def main():
     stubs = OUT / "stubs.c"
     stubs.write_text("")
     objs = game_objs + platform
-    html = OUT / "dw3.html"
+    html = OUT / "index.html"
     link_map = OUT / "link.map"
     for attempt in range(2):
         stub_obj = OUT / "stubs.o"
