@@ -221,12 +221,26 @@ def data_segments(wasm):
     return sorted(out)
 
 
+def flexible_sizes(variables, where):
+    """A struct with a flexible array member (sound.c's SoundFiles) has its
+    initialised tail outside its DWARF size: the wasm's size is taken when it
+    is bigger and still ends before the exe's next variable"""
+    out = []
+    for i, (rva, size, unit, names) in enumerate(variables):
+        hit = next((where[(unit, nm)] for nm in names if (unit, nm) in where), None)
+        nxt = variables[i + 1][0] if i + 1 < len(variables) else rva + size
+        if hit and hit[1] > size and rva + hit[1] <= nxt:
+            size = hit[1]
+        out.append((rva, size, unit, names))
+    return out
+
+
 def main(upstream, web):
     exe = (upstream / "dw2003.exe").read_bytes()
     runs = read_fill(upstream / "dw2003.fill")
-    variables = exe_variables(exe)
-    parts, outside = pieces(runs, variables)
     where = link_map((web / "link.map").read_text())
+    variables = flexible_sizes(exe_variables(exe), where)
+    parts, outside = pieces(runs, variables)
     wasm = bytearray((web / "dw3.wasm").read_bytes())
     segs = data_segments(wasm)
     seg_starts = [s[0] for s in segs]
