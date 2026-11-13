@@ -27,7 +27,7 @@
 <body>
 <header>
   <h1>DW3 (web)</h1>
-  <p class="note">Carregamento automático da ROM integrado.</p>
+  <p class="note">Carregamento e extração automática da ROM integrados.</p>
 </header>
 <div id="panel">
   <div id="status">A preparar o sistema…</div>
@@ -44,26 +44,50 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const status = (t) => { $('status').textContent = t; };
-  const OPFS_DIR = 'dw3data';
-  const ROM_FILENAME = 'Digimon World 2003 (Europe) (En,Fr,De,Es,It).chd';
+  const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
+  const ROM_FILENAME = 'game.chd';
   const ROM_URL = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
+
+  let synced = Promise.resolve();
+  function sync(load) {
+    synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
+    return synced;
+  }
 
   async function opfsDir(create) {
     return (await navigator.storage.getDirectory()).getDirectoryHandle(OPFS_DIR, { create });
   }
 
-  async function checkOrDownloadROM() {
-    try {
-      const dir = await opfsDir(true);
-      try {
-        const handle = await dir.getFileHandle(ROM_FILENAME);
-        // Se já existe no navegador, pula o download
-        status('ROM encontrada no navegador!');
-        return;
-      } catch (e) {
-        // Não existe, vamos baixar
-      }
+  async function extracted() {
+    try { await (await opfsDir(false)).getFileHandle('SLES_039.36'); return true; } catch (e) { return false; }
+  }
 
+  async function storeData() {
+    const files = [];
+    (function walk(path) {
+      for (const name of FS.readdir(path)) {
+        if (name === '.' || name === '..') continue;
+        const full = path + '/' + name;
+        if (FS.isDir(FS.stat(full).mode)) walk(full); else files.push(full.slice(DATA.length + 1));
+      }
+    })(DATA);
+    files.sort((a, b) => (a === 'SLES_039.36') - (b === 'SLES_039.36'));
+    const root = await opfsDir(true);
+    let n = 0;
+    for (const rel of files) {
+      let dir = root;
+      const parts = rel.split('/');
+      for (const d of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(d, { create: true });
+      const w = await (await dir.getFileHandle(parts[parts.length - 1], { create: true })).createWritable();
+      await w.write(FS.readFile(DATA + '/' + rel));
+      await w.close();
+      FS.unlink(DATA + '/' + rel);
+      if (++n % 50 === 0) status('A guardar no navegador… ' + Math.round(100 * n / files.length) + '%');
+    }
+  }
+
+  async function downloadAndExtract() {
+    try {
       status('A descarregar a ROM do Hugging Face (400MB)...');
       const response = await fetch(ROM_URL);
       if (!response.ok) throw new Error('Falha no download: ' + response.statusText);
@@ -91,14 +115,33 @@
         position += chunk.length;
       }
 
-      status('A guardar a ROM no navegador (OPFS)…');
-      const handle = await dir.getFileHandle(ROM_FILENAME, { create: true });
-      const writable = await handle.createWritable();
-      await writable.write(chunksAll);
-      await writable.close();
-      status('ROM guardada com sucesso!');
+      status('A injetar ROM no emulador para extração…');
+      try { FS.mkdir('/disc'); } catch (e) {}
+      FS.writeFile('/disc/' + ROM_FILENAME, chunksAll);
+
+      status('A extrair os dados do jogo (pode levar alguns segundos)…');
+      await new Promise((r) => setTimeout(r, 50));
+      
+      let code;
+      try {
+        code = callMain(['--extract', '/disc/' + ROM_FILENAME]);
+      } catch (e) {
+        console.error(e);
+        throw new Error('Erro na extração: ' + e.message);
+      }
+
+      try { FS.unlink('/disc/' + ROM_FILENAME); } catch (e) {}
+
+      if (code !== 0) {
+        throw new Error('A extração falhou com código ' + code);
+      }
+
+      status('A guardar os dados permanentemente no navegador…');
+      await storeData();
+      status('Tudo pronto!');
+      $('play').classList.remove('hidden');
     } catch (err) {
-      status('Erro ao descarregar a ROM: ' + err.message);
+      status('Erro: ' + err.message);
       console.error(err);
     }
   }
@@ -110,20 +153,29 @@
     printErr: (t) => console.warn(t),
     setStatus: (t) => { if (t && t.startsWith('Downloading')) status('A carregar os arquivos do emulador…'); },
     preRun: [() => {
-      // Configuração padrão de diretórios do motor
-      try { FS.mkdirTree('/dw3/data'); } catch(e) {}
-      try { FS.mkdirTree('/dw3/saves'); } catch(e) {}
+      FS.mkdirTree(DATA);
+      FS.mkdirTree(SAVES);
+      FS.mount(IDBFS, {}, SAVES);
+      addRunDependency('dw3-saves');
+      sync(true).then(() => removeRunDependency('dw3-saves'));
+      
+      addRunDependency('dw3-fill');
+      fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then((t) => FS.writeFile('/dw3.fill', t))
+        .catch((e) => status('Não consegui baixar dw3.fill (' + e + ').'))
+        .finally(() => removeRunDependency('dw3-fill'));
     }],
     onRuntimeInitialized: async () => {
       if (!navigator.storage || !navigator.storage.getDirectory) {
         status('Este navegador não suporta armazenamento OPFS.');
         return;
       }
-      await checkOrDownloadROM();
-      status('Tudo pronto!');
-      $('play').classList.remove('hidden');
-      // Opcional: Se quiser que inicie automaticamente sem precisar clicar em "Jogar", basta descomentar a linha abaixo:
-      // $('start').click();
+      if (await extracted()) {
+        status('O jogo está pronto para iniciar.');
+        $('play').classList.remove('hidden');
+      } else {
+        await downloadAndExtract();
+      }
     },
   };
 
@@ -131,15 +183,12 @@
     $('panel').classList.add('hidden');
     $('canvas').style.display = 'block';
     $('canvas').focus();
+    setInterval(() => sync(false), 10000);
+    addEventListener('pagehide', () => FS.syncfs(false, () => {}));
     
-    try {
-      callMain([]);
-    } catch (e) {
-      console.error(e);
-      status('Erro ao iniciar o jogo: ' + e.message);
-    }
-
     const ffIndex = Module.ccall('native_web_speed_address', 'number', [], []) >> 2;
+    callMain([]);
+    
     const speed = $('speed');
     speed.style.display = 'flex';
     const mark = (x) => speed.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.x === x));
@@ -155,6 +204,7 @@
   $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
     try { await (await navigator.storage.getDirectory()).removeEntry(OPFS_DIR, { recursive: true }); } catch (e) {}
+    indexedDB.deleteDatabase(SAVES);
     location.reload();
   });
 </script>
