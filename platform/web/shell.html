@@ -89,7 +89,8 @@
     noInitialRun: true,
     print: (t) => console.log(t),
     printErr: (t) => console.warn(t),
-    setStatus: (t) => { if (t) status(t.replace('Downloading data...', 'Baixando…').replace('Running...', 'Iniciando…')); },
+    // Emscripten's own progress, while the wasm downloads; the page's steps after that are its own
+    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('Baixando o jogo…'); },
     preRun: [() => {
       indexedDB.deleteDatabase('/dw3'); // the first web build kept the whole game there
       FS.mkdirTree(DATA);

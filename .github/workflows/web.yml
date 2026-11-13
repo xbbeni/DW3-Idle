@@ -51,7 +51,7 @@ jobs:
           google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=30000 \
             --dump-dom http://localhost:8000/index.html > dom.html 2> chrome.log || true
           grep -o '<div id="status">[^<]*</div>' dom.html || true
-          grep -q 'Primeira vez' dom.html || { tail -40 chrome.log; exit 1; }
+          grep -q '<div id="status">Primeira vez' dom.html || { tail -40 chrome.log; exit 1; }
       - name: the page (the build's own files; none of the game)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
