@@ -95,6 +95,35 @@ def split_args(text):
     raise ValueError(text)
 
 
+WIDE_CALL = re.compile(r"^(\s*)(%[\w.]+ = )?((?:tail |musttail |notail )?call )((?:zeroext |signext |noundef )*)(i8|i16) (@[\w.$]+)\((.*)$")
+
+
+def widen_calls(original, ll_text):
+    """build.widen_returns makes the module's u8/s16 functions return i32;
+    its own calls to them still say i8/i16, which x86 lets pass and
+    WebAssembly's FixFunctionBitcasts turns into a trap (_bitcast_invalid).
+    They call for the i32 and truncate it (the value the caller reads is the
+    same). Calls from other modules are the same in wasm types (i32)."""
+    widened = {re.match(r"[\w.$]+", w).group(0) for w in
+               (l.split("@", 1)[1] for l in original.splitlines() if build.RET_DEFINE.match(l))}
+    if not widened:
+        return ll_text
+    out, n = [], 0
+    for line in ll_text.splitlines():
+        m = WIDE_CALL.match(line)
+        if m and m.group(6)[1:] in widened:
+            indent, result, call, attrs, ty, callee, rest = m.groups()
+            if result:
+                n += 1
+                name = result.split(" = ")[0]
+                out.append(f"{indent}%__wide{n} = {call}i32 {callee}({rest}")
+                out.append(f"{indent}{name} = trunc i32 %__wide{n} to {ty}")
+                continue
+            line = f"{indent}{call}i32 {callee}({rest}"
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def trim_extra_args(ll_text):
     out = []
     for line in ll_text.splitlines():
@@ -117,7 +146,8 @@ def emit_ir(src):
     r = run([EMCC, *build.GAME_CFLAGS, "-S", "-emit-llvm", f"-I{src.parent}", real, "-o", ll])
     if r.returncode != 0:
         return rel, None, r.stderr
-    ll_text = trim_extra_args(build.mips_divisions(build.widen_returns(ll.read_text())))
+    original = ll.read_text()
+    ll_text = trim_extra_args(widen_calls(original, build.mips_divisions(build.widen_returns(original))))
     # common symbols become plain definitions, as build.py's overlay_sections
     # does (wasm-ld doesn't merge them with the other files' references)
     ll_text = COMMON.sub(r"\1 = ", ll_text)
@@ -205,6 +235,16 @@ def main():
         sys.exit(f"{len(bad)} game files failed to compile")
     game_objs = [obj for obj, _ in compiled]
     print(f"game: {len(game_objs)} files compiled")
+    # a call LLVM couldn't make fit its function's signature becomes a trap
+    # (<name>_bitcast_invalid) at run time: fail here instead
+    nm = Path(EMCC).parent / "emnm"
+    invalid = collections.Counter()
+    with cf.ThreadPoolExecutor(jobs) as ex:
+        for obj, syms in zip(game_objs, ex.map(lambda o: run([nm, "--defined-only", o]).stdout, game_objs)):
+            for sym in re.findall(r"(\S*_bitcast_invalid)", syms):
+                invalid[f"{obj.relative_to(OUT / 'obj')}: {sym}"] += 1
+    if invalid:
+        sys.exit("calls that would trap (bitcast_invalid):\n" + "\n".join(f"  {k}" for k in sorted(invalid)))
 
     platform, pfail = [], []
     for src in sorted((NATIVE / "platform").glob("*.c")):
