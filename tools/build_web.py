@@ -196,6 +196,12 @@ def main():
         rsp.write_text("\n".join(f'"{o}"' for o in objs + [stub_obj]))
         r = run([EMCC, f"@{rsp}", "-o", html, *LDFLAGS, f"-Wl,-Map={link_map}"])
         if r.returncode == 0:
+            # a call through a prototype that differs from the definition traps
+            # in WebAssembly (where x86 let it pass): list them, the build fails
+            mismatches = sorted(set(re.findall(r"function signature mismatch: ([\w$]+)", r.stderr)))
+            if mismatches:
+                print(r.stderr[:20000])
+                sys.exit(f"{len(mismatches)} functions called with another signature than defined: " + ", ".join(mismatches))
             break
         missing = sorted(set(re.findall(r"undefined symbol: ([\w$]+)", r.stderr)))
         if not missing or attempt:
