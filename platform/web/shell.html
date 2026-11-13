@@ -45,42 +45,71 @@
   const $ = (id) => document.getElementById(id);
   console.log('dw3: page script started');
   const status = (t) => { $('status').textContent = t; };
-  const ROOT = '/dw3', DATA = ROOT + '/data';
+  const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
+  // the game's files live in the browser's file storage (OPFS) and come into
+  // memory one at a time when the game opens them (platform/web.c); only the
+  // saves are in IndexedDB, which loads whole
   let synced = Promise.resolve();
   function sync(load) {
     synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
     return synced;
   }
-  // an error shows on the page too, for a screenshot
-  addEventListener('error', (e) => status('Erro: ' + (e.message || e)));
-  addEventListener('unhandledrejection', (e) => {
-    const r = e.reason || {};
-    status('Erro: ' + (r.message || r) + ' | ' + String(r.stack || '').split('\n').slice(0, 8).join(' | '));
-  });
+  async function opfsDir(create) {
+    return (await navigator.storage.getDirectory()).getDirectoryHandle(OPFS_DIR, { create });
+  }
+  async function extracted() {
+    try { await (await opfsDir(false)).getFileHandle('SLES_039.36'); return true; } catch (e) { return false; }
+  }
+  // the extracted tree, from memory into OPFS; SLES_039.36 last, as the marker
+  async function storeData() {
+    const files = [];
+    (function walk(path) {
+      for (const name of FS.readdir(path)) {
+        if (name === '.' || name === '..') continue;
+        const full = path + '/' + name;
+        if (FS.isDir(FS.stat(full).mode)) walk(full); else files.push(full.slice(DATA.length + 1));
+      }
+    })(DATA);
+    files.sort((a, b) => (a === 'SLES_039.36') - (b === 'SLES_039.36'));
+    const root = await opfsDir(true);
+    let n = 0;
+    for (const rel of files) {
+      let dir = root;
+      const parts = rel.split('/');
+      for (const d of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(d, { create: true });
+      const w = await (await dir.getFileHandle(parts[parts.length - 1], { create: true })).createWritable();
+      await w.write(FS.readFile(DATA + '/' + rel));
+      await w.close();
+      FS.unlink(DATA + '/' + rel); // memory back as it goes
+      if (++n % 50 === 0) status('Guardando no navegador… ' + Math.round(100 * n / files.length) + '%');
+    }
+  }
   var Module = {
     canvas: $('canvas'),
     noInitialRun: true,
     print: (t) => console.log(t),
     printErr: (t) => console.warn(t),
-    setStatus: (t) => { if (t) status(t.replace('Downloading data...', 'Baixando…').replace('Running...', 'Iniciando…')); },
+    // Emscripten's own progress, while the wasm downloads; the page's steps after that are its own
+    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('Baixando o jogo…'); },
     preRun: [() => {
-      FS.mkdir(ROOT);
-      FS.mount(IDBFS, {}, ROOT);
-      addRunDependency('dw3-storage');
-      const t0 = performance.now();
-      status('Abrindo os dados do jogo guardados neste navegador (pode levar um minuto)…');
-      sync(true).then(() => {
-        console.log('dw3: storage loaded in ' + Math.round(performance.now() - t0) + ' ms');
-        removeRunDependency('dw3-storage');
-      });
+      indexedDB.deleteDatabase('/dw3'); // the first web build kept the whole game there
+      FS.mkdirTree(DATA);
+      FS.mkdirTree(SAVES);
+      FS.mount(IDBFS, {}, SAVES);
+      addRunDependency('dw3-saves');
+      sync(true).then(() => removeRunDependency('dw3-saves'));
       addRunDependency('dw3-fill');
       fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
         .then((t) => FS.writeFile('/dw3.fill', t))
         .catch((e) => status('Não consegui baixar dw3.fill (' + e + ').'))
         .finally(() => removeRunDependency('dw3-fill'));
     }],
-    onRuntimeInitialized: () => {
-      if (FS.analyzePath(DATA + '/SLES_039.36').exists) {
+    onRuntimeInitialized: async () => {
+      if (!navigator.storage || !navigator.storage.getDirectory) {
+        status('Este navegador não tem o armazenamento de arquivos que a página usa (OPFS). Usa o Chrome, Edge ou Firefox atualizado.');
+        return;
+      }
+      if (await extracted()) {
         status('O jogo já foi lido do teu disco.');
         $('play').classList.remove('hidden');
       } else {
@@ -115,8 +144,13 @@
       $('pick').classList.remove('hidden');
       return;
     }
-    status('Salvando no navegador…');
-    await sync(false);
+    status('Guardando no navegador…');
+    try {
+      await storeData();
+    } catch (e) {
+      status('Não consegui guardar no navegador: ' + e.message);
+      return;
+    }
     location.reload();
   });
   $('start').addEventListener('click', () => {
@@ -127,9 +161,10 @@
     addEventListener('pagehide', () => FS.syncfs(false, () => {}));
     callMain([]);
   });
-  $('forget').addEventListener('click', () => {
+  $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
-    indexedDB.deleteDatabase(ROOT);
+    try { await (await navigator.storage.getDirectory()).removeEntry(OPFS_DIR, { recursive: true }); } catch (e) {}
+    indexedDB.deleteDatabase(SAVES);
     location.reload();
   });
 </script>

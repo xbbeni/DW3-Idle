@@ -60,6 +60,47 @@ def run(cmd):
     return subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
 
 
+# Game calls through an unprototyped `()` declaration that pass more
+# arguments than the function takes: the R3000 ignored the extra registers,
+# WebAssembly traps on the mismatched signature (wasm-ld's "function
+# signature mismatch", which fails this build). The calls keep the first n.
+EXTRA_ARGS = {
+    "FIGHTSTG_startEnemyTurn": 0,   # normal_battle/menu.c passes &FIGHTSTG_battle
+    "FIGHTSTG_startOneHpTurn": 0,   # the same
+    "FIGHTSTG_startHitEffect": 2,   # normal_battle/menu.c passes the damage too
+}
+CALL = re.compile(r"(\bcall [^@]*@(" + "|".join(EXTRA_ARGS) + r")\()(.*)$")
+
+
+def split_args(text):
+    """the top-level comma-separated arguments of a call, and what follows its ')'"""
+    depth, start, args = 0, 0, []
+    for i, c in enumerate(text):
+        if c in "([{<":
+            depth += 1
+        elif c in ")]}>":
+            if depth == 0:
+                if text[start:i].strip():
+                    args.append(text[start:i].strip())
+                return args, text[i:]
+            depth -= 1
+        elif c == "," and depth == 0:
+            args.append(text[start:i].strip())
+            start = i + 1
+    raise ValueError(text)
+
+
+def trim_extra_args(ll_text):
+    out = []
+    for line in ll_text.splitlines():
+        m = CALL.search(line)
+        if m:
+            args, rest = split_args(m.group(3))
+            line = line[:m.start()] + m.group(1) + ", ".join(args[:EXTRA_ARGS[m.group(2)]]) + rest
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def emit_ir(src):
     """The game file's IR, rewritten as build.py does (without the COFF overlay sections)"""
     rel = src.relative_to(DECOMP / "src")
@@ -71,7 +112,7 @@ def emit_ir(src):
     r = run([EMCC, *build.GAME_CFLAGS, "-S", "-emit-llvm", f"-I{src.parent}", real, "-o", ll])
     if r.returncode != 0:
         return rel, None, r.stderr
-    ll_text = build.mips_divisions(build.widen_returns(ll.read_text()))
+    ll_text = trim_extra_args(build.mips_divisions(build.widen_returns(ll.read_text())))
     # common symbols become plain definitions, as build.py's overlay_sections
     # does (wasm-ld doesn't merge them with the other files' references)
     ll_text = COMMON.sub(r"\1 = ", ll_text)
@@ -196,6 +237,13 @@ def main():
         rsp.write_text("\n".join(f'"{o}"' for o in objs + [stub_obj]))
         r = run([EMCC, f"@{rsp}", "-o", html, *LDFLAGS, f"-Wl,-Map={link_map}"])
         if r.returncode == 0:
+            # a call through a prototype that differs from the definition traps
+            # in WebAssembly (where x86 let it pass): list them, the build fails
+            # open: debug/vibration_test.c's, a menu the game never opens
+            mismatches = sorted(set(re.findall(r"function signature mismatch: ([\w$]+)", r.stderr)) - {"open"})
+            if mismatches:
+                print(r.stderr[:20000])
+                sys.exit(f"{len(mismatches)} functions called with another signature than defined: " + ", ".join(mismatches))
             break
         missing = sorted(set(re.findall(r"undefined symbol: ([\w$]+)", r.stderr)))
         if not missing or attempt:

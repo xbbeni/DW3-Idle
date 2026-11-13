@@ -315,6 +315,15 @@ int native_disk_file(int fid); /* files.c: data/mods/<fid>.bin or the disc's is 
 /* Platform state that is the console's, saved with the game's in a
    savestate (state.c): it sits in the game's variables' section */
 #define SAVED __attribute__((section(".data$dw3g1")))
+
+/* Before opening one of the game's files under data_dir(): the browser build
+   brings it in from the browser's storage first (web.c); nothing natively */
+#ifdef __EMSCRIPTEN__
+int native_web_fetch(const char *path);
+#define WEB_FETCH(path) native_web_fetch(path)
+#else
+#define WEB_FETCH(path) ((void)0)
+#endif
 void state_key(int key);  /* a debug key (SDL keycode), from pump_events */
 void state_frame(void);   /* at the frame's end (native_wait_vblank): runs what the keys asked */
 int movie_playing(void);  /* movie.c */

@@ -353,7 +353,7 @@ static void note_off(Seq *t, int ch, int note) {
     }
 }
 
-void SsUtSetReverbType(short type);
+short SsUtSetReverbType(short type);
 void SsUtSetReverbDepth(short l, short r);
 
 static void controller(Seq *t, int ch, int cc, int value) {
@@ -620,7 +620,15 @@ void SsSetSerialAttr(char channel, char attr, char mode) {}
 #define REV_STARTS 0x8005C810u
 #define REV_PARAMS 0x8005C840u
 
-void SsUtSetReverbType(short type) {
+static void set_reverb_type(short type);
+
+/* short, as libsnd.h has it (WebAssembly traps on a mismatched signature) */
+short SsUtSetReverbType(short type) {
+    set_reverb_type(type);
+    return type;
+}
+
+static void set_reverb_type(short type) {
     static uint8_t exe[0x800 + 0x60000];
     static int loaded;
     uint32_t base, start;

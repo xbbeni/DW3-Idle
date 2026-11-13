@@ -18,6 +18,7 @@ static FILE *open_file(int fid) {
     f = fopen(path, "rb");
     if (f == NULL) {
         snprintf(path, sizeof path, "%s/files/%04d.bin", data_dir(), fid);
+        WEB_FETCH(path);
         f = fopen(path, "rb");
     }
     return f;
@@ -61,6 +62,7 @@ int native_disc_file(int fid) {
         return 0;
     }
     snprintf(path, sizeof path, "%s/files/%04d.bin", data_dir(), fid);
+    WEB_FETCH(path);
     if ((f = fopen(path, "rb")) == NULL) {
         return 0;
     }
