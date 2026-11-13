@@ -31,14 +31,13 @@ int native_web_fetch(const char *path) {
     return web_fetch_file(path);
 }
 
-/* The page's speed buttons: x1 to x5 (etc.c's fast forward) */
+/* The page's speed buttons (etc.c's fast forward, x1 to x5): where
+   g_ff_speed is, asked once before the game runs. The page then reads and
+   writes it in memory: calling into the module while the game sleeps
+   (ASYNCIFY) would break the suspended game */
 extern int g_ff_speed;
 
-EMSCRIPTEN_KEEPALIVE void native_web_set_speed(int speed) {
-    g_ff_speed = speed < 1 ? 1 : speed > 5 ? 5 : speed;
-}
-
-EMSCRIPTEN_KEEPALIVE int native_web_speed(void) {
-    return g_ff_speed;
+EMSCRIPTEN_KEEPALIVE int *native_web_speed_address(void) {
+    return &g_ff_speed;
 }
 #endif
