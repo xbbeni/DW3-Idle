@@ -75,8 +75,10 @@ def emit_ir(src):
 
 def prefix_stages(lls):
     """Each stage's own symbols get its name as a prefix (WSTAG931_startStage),
-    as build.py does with objcopy, here on the IR"""
+    as build.py does with objcopy, here on the IR. Returns the stages that
+    have a setup (for native_stage_list)"""
     stages = collections.defaultdict(list)
+    with_setup = []
     for ll in lls:
         m = build.STAGE.match(ll.with_suffix(".c").name)
         if m:
@@ -90,9 +92,27 @@ def prefix_stages(lls):
                     names.add(m.group(1))
         if not names:
             continue
+        if "setupStage" in names:
+            with_setup.append(stage)
         pat = re.compile(r"@(" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b(?![\w.$])")
         for ll in group:
             ll.write_text(pat.sub(lambda m: f"@{stage.upper()}_{m.group(1)}", ll.read_text()))
+    return sorted(with_setup)
+
+
+def stage_list(names):
+    """The stages' setups, by name, for --dump-stages (platform/stagedump.c), as build.py writes it"""
+    src = OUT / "stage_list.c"
+    with open(src, "w") as f:
+        f.writelines(f"void {n.upper()}_setupStage(void); void {n.upper()}_startStage(void);\n" for n in names)
+        f.write("struct { const char *name; void (*setup)(void); void *start; } native_stage_list[] = {\n")
+        f.writelines(f'    {{"{n}", {n.upper()}_setupStage, (void *){n.upper()}_startStage}},\n' for n in names)
+        f.write("    {0, 0, 0},\n};\n")
+    obj = OUT / "stage_list.o"
+    r = run([EMCC, *PLATFORM_CFLAGS, src, "-o", obj])
+    if r.returncode != 0:
+        sys.exit(r.stderr)
+    return obj
 
 
 def compile_ir(ll):
@@ -117,7 +137,7 @@ def main():
     if failed:
         sys.exit(f"{len(failed)} game files failed")
     lls = [ll for _, ll, _ in emitted]
-    prefix_stages(lls)
+    staged = prefix_stages(lls)
 
     with cf.ThreadPoolExecutor(jobs) as ex:
         compiled = list(ex.map(compile_ir, lls))
@@ -147,6 +167,7 @@ def main():
         sys.exit(f"{len(pfail)} platform files failed")
     if "--compile" in sys.argv:
         return
+    platform.append(stage_list(staged))
 
     # what nothing defines gets a stub that logs once and returns 0, as in build.py;
     # the linker names them
