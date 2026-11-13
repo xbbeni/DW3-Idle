@@ -13,8 +13,8 @@
   .note { color: #8a97ad; font-size: 13px; margin: 0; }
   #panel { width: min(960px, 100%); padding: 0 16px 12px; box-sizing: border-box; }
   #status { margin: 8px 0; min-height: 1.5em; }
-  button, label.btn { background: #2b5bd7; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px;
-                     font: inherit; cursor: pointer; display: inline-block; }
+  button { background: #2b5bd7; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px;
+           font: inherit; cursor: pointer; display: inline-block; }
   button:disabled { background: #39425a; cursor: default; }
   .hidden { display: none !important; }
   canvas { display: none; background: #000; width: min(960px, 100vw); aspect-ratio: 4 / 3; outline: none; }
@@ -27,12 +27,12 @@
 <body>
 <header>
   <h1>DW3 (web)</h1>
-  <p class="note">Projeto de fã, sem relação com a Bandai Namco. Carregamento automático da ROM do jogo integrado.</p>
+  <p class="note">Carregamento automático da ROM integrado.</p>
 </header>
 <div id="panel">
-  <div id="status">A preparar o carregamento automático…</div>
+  <div id="status">A preparar o sistema…</div>
   <div id="play" class="hidden">
-    <button id="start">Jogar</button>
+    <button id="start">Iniciar Jogo</button>
     <small class="link" id="forget">apagar os dados do jogo deste navegador</small>
   </div>
 </div>
@@ -43,29 +43,29 @@
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 <script>
   const $ = (id) => document.getElementById(id);
-  console.log('dw3: page script started');
   const status = (t) => { $('status').textContent = t; };
-  const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
+  const OPFS_DIR = 'dw3data';
   const ROM_FILENAME = 'Digimon World 2003 (Europe) (En,Fr,De,Es,It).chd';
-  
-  let synced = Promise.resolve();
-  function sync(load) {
-    synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
-    return synced;
-  }
+  const ROM_URL = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
+
   async function opfsDir(create) {
     return (await navigator.storage.getDirectory()).getDirectoryHandle(OPFS_DIR, { create });
   }
-  async function extracted() {
-    try { await (await opfsDir(false)).getFileHandle(ROM_FILENAME); return true; } catch (e) { return false; }
-  }
 
-  async function downloadAndStoreROM() {
+  async function checkOrDownloadROM() {
     try {
+      const dir = await opfsDir(true);
+      try {
+        const handle = await dir.getFileHandle(ROM_FILENAME);
+        // Se já existe no navegador, pula o download
+        status('ROM encontrada no navegador!');
+        return;
+      } catch (e) {
+        // Não existe, vamos baixar
+      }
+
       status('A descarregar a ROM do Hugging Face (400MB)...');
-      const romUrl = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
-      
-      const response = await fetch(romUrl);
+      const response = await fetch(ROM_URL);
       if (!response.ok) throw new Error('Falha no download: ' + response.statusText);
 
       const reader = response.body.getReader();
@@ -92,14 +92,11 @@
       }
 
       status('A guardar a ROM no navegador (OPFS)…');
-      const root = await opfsDir(true);
-      const handle = await root.getFileHandle(ROM_FILENAME, { create: true });
+      const handle = await dir.getFileHandle(ROM_FILENAME, { create: true });
       const writable = await handle.createWritable();
       await writable.write(chunksAll);
       await writable.close();
-
       status('ROM guardada com sucesso!');
-      $('play').classList.remove('hidden');
     } catch (err) {
       status('Erro ao descarregar a ROM: ' + err.message);
       console.error(err);
@@ -111,32 +108,22 @@
     noInitialRun: true,
     print: (t) => console.log(t),
     printErr: (t) => console.warn(t),
-    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('A carregar os arquivos do emulador/wasm…'); },
+    setStatus: (t) => { if (t && t.startsWith('Downloading')) status('A carregar os arquivos do emulador…'); },
     preRun: [() => {
-      indexedDB.deleteDatabase('/dw3');
-      FS.mkdirTree(DATA);
-      FS.mkdirTree(SAVES);
-      FS.mount(IDBFS, {}, SAVES);
-      addRunDependency('dw3-saves');
-      sync(true).then(() => removeRunDependency('dw3-saves'));
-      
-      addRunDependency('dw3-fill');
-      fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then((t) => FS.writeFile('/dw3.fill', t))
-        .catch((e) => status('Não consegui baixar dw3.fill (' + e + ').'))
-        .finally(() => removeRunDependency('dw3-fill'));
+      // Configuração padrão de diretórios do motor
+      try { FS.mkdirTree('/dw3/data'); } catch(e) {}
+      try { FS.mkdirTree('/dw3/saves'); } catch(e) {}
     }],
     onRuntimeInitialized: async () => {
       if (!navigator.storage || !navigator.storage.getDirectory) {
-        status('Este navegador não suporta armazenamento OPFS. Usa um navegador atualizado.');
+        status('Este navegador não suporta armazenamento OPFS.');
         return;
       }
-      if (await extracted()) {
-        status('O jogo está pronto para iniciar.');
-        $('play').classList.remove('hidden');
-      } else {
-        await downloadAndStoreROM();
-      }
+      await checkOrDownloadROM();
+      status('Tudo pronto!');
+      $('play').classList.remove('hidden');
+      // Opcional: Se quiser que inicie automaticamente sem precisar clicar em "Jogar", basta descomentar a linha abaixo:
+      // $('start').click();
     },
   };
 
@@ -144,12 +131,15 @@
     $('panel').classList.add('hidden');
     $('canvas').style.display = 'block';
     $('canvas').focus();
-    setInterval(() => sync(false), 10000);
-    addEventListener('pagehide', () => FS.syncfs(false, () => {}));
     
+    try {
+      callMain([]);
+    } catch (e) {
+      console.error(e);
+      status('Erro ao iniciar o jogo: ' + e.message);
+    }
+
     const ffIndex = Module.ccall('native_web_speed_address', 'number', [], []) >> 2;
-    callMain([]); // Inicia o jogo principal
-    
     const speed = $('speed');
     speed.style.display = 'flex';
     const mark = (x) => speed.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.x === x));
@@ -165,7 +155,6 @@
   $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
     try { await (await navigator.storage.getDirectory()).removeEntry(OPFS_DIR, { recursive: true }); } catch (e) {}
-    indexedDB.deleteDatabase(SAVES);
     location.reload();
   });
 </script>
