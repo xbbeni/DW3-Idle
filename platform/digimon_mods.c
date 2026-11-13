@@ -24,6 +24,7 @@
    take them. Folders are read in the order of their names, so the same folders give the same mods on every machine. */
 #include <SDL3/SDL.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include "platform.h"
 #include "../include/native.h"

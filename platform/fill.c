@@ -5,9 +5,20 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
-#include <windows.h>
 
 void native_log(const char *fmt, ...);
+
+#ifdef __EMSCRIPTEN__
+/* TODO(web): the browser build keeps the game's tables in the wasm for now;
+   before it is published they must be zeroed and filled from the player's
+   disc like the exe's (docs/web.md) */
+int native_fill(const char *data) {
+    (void)data;
+    native_log("web: the game's tables are not filled from the disc yet");
+    return 1;
+}
+#else
+#include <windows.h>
 
 int native_fill(const char *data) {
     char path[MAX_PATH + 8], src[64], open[64] = "", file[1100];
@@ -50,3 +61,4 @@ int native_fill(const char *data) {
     }
     return 1;
 }
+#endif

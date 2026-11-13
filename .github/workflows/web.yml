@@ -1,0 +1,30 @@
+name: web
+on: [push, pull_request]
+
+jobs:
+  build:
+    # the browser build (tools/build_web.py); nothing of the game is uploaded:
+    # the wasm still holds the game's tables until platform/fill.c's web
+    # version fills them from the player's disc (docs/web.md)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: native
+      - name: dw3_decomp at DECOMP_COMMIT
+        run: |
+          commit=$(sed -n 's/^DECOMP_COMMIT = "\(.*\)"/\1/p' native/build.py)
+          git init -q dw3_decomp
+          git -C dw3_decomp remote add origin https://github.com/ReGame-Labs/dw3_decomp
+          git -C dw3_decomp fetch -q --depth 1 origin "$commit"
+          git -C dw3_decomp checkout -q FETCH_HEAD
+          git -C dw3_decomp submodule update -q --init --depth 1 external/psyq_headers
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.10
+          actions-cache-folder: emsdk-cache
+      - name: build
+        run: python3 native/tools/build_web.py
+      - name: report
+        if: always()
+        run: cat native/build-web/report.md 2>/dev/null || true
