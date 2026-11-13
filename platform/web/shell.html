@@ -43,6 +43,7 @@
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 <script>
   const $ = (id) => document.getElementById(id);
+  console.log('dw3: page script started');
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data';
   let synced = Promise.resolve();
@@ -61,11 +62,17 @@
     noInitialRun: true,
     print: (t) => console.log(t),
     printErr: (t) => console.warn(t),
+    setStatus: (t) => { if (t) status(t.replace('Downloading data...', 'Baixando…').replace('Running...', 'Iniciando…')); },
     preRun: [() => {
       FS.mkdir(ROOT);
       FS.mount(IDBFS, {}, ROOT);
       addRunDependency('dw3-storage');
-      sync(true).then(() => removeRunDependency('dw3-storage'));
+      const t0 = performance.now();
+      status('Abrindo os dados do jogo guardados neste navegador (pode levar um minuto)…');
+      sync(true).then(() => {
+        console.log('dw3: storage loaded in ' + Math.round(performance.now() - t0) + ' ms');
+        removeRunDependency('dw3-storage');
+      });
       addRunDependency('dw3-fill');
       fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
         .then((t) => FS.writeFile('/dw3.fill', t))
