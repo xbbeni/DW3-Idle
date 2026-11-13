@@ -30,4 +30,15 @@ EM_ASYNC_JS(int, web_fetch_file, (const char *path), {
 int native_web_fetch(const char *path) {
     return web_fetch_file(path);
 }
+
+/* The page's speed buttons: x1 to x5 (etc.c's fast forward) */
+extern int g_ff_speed;
+
+EMSCRIPTEN_KEEPALIVE void native_web_set_speed(int speed) {
+    g_ff_speed = speed < 1 ? 1 : speed > 5 ? 5 : speed;
+}
+
+EMSCRIPTEN_KEEPALIVE int native_web_speed(void) {
+    return g_ff_speed;
+}
 #endif

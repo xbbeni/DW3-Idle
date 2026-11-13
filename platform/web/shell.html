@@ -19,6 +19,9 @@
   input[type=file] { display: none; }
   canvas { display: none; background: #000; width: min(960px, 100vw); aspect-ratio: 4 / 3; outline: none; }
   .hidden { display: none !important; }
+  #speed { display: none; gap: 6px; align-items: center; padding: 8px 0; color: #8a97ad; font-size: 13px; }
+  #speed button { padding: 6px 12px; background: #39425a; }
+  #speed button.on { background: #2b5bd7; }
   small.link { color: #8a97ad; cursor: pointer; text-decoration: underline; }
 </style>
 </head>
@@ -39,6 +42,10 @@
     <button id="start">Jogar</button>
     <small class="link" id="forget">apagar os dados do jogo deste navegador</small>
   </div>
+</div>
+<div id="speed">Velocidade:
+  <button data-x="1">1x</button><button data-x="2">2x</button><button data-x="3">3x</button><button data-x="4">4x</button><button data-x="5">5x</button>
+  <span>(ou Tab no teclado)</span>
 </div>
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 <script>
@@ -160,6 +167,16 @@
     setInterval(() => sync(false), 10000);
     addEventListener('pagehide', () => FS.syncfs(false, () => {}));
     callMain([]);
+    const speed = $('speed');
+    speed.style.display = 'flex';
+    const mark = (x) => speed.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.x === x));
+    speed.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      Module.ccall('native_web_set_speed', null, ['number'], [+b.dataset.x]);
+      mark(+b.dataset.x);
+      $('canvas').focus(); // the keys go back to the game
+    }));
+    // Tab and the options menu change it too: follow them
+    setInterval(() => mark(Module.ccall('native_web_speed', 'number', [], [])), 500);
   });
   $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;

@@ -57,15 +57,9 @@ int native_long_held(int held) {
     return out;
 }
 
-/* Tab or R3: x1, x2, x3, x5 and round */
+/* Tab or R3: x1 to x5 and round */
 void ff_cycle(void) {
-    static const int SPEEDS[] = {1, 2, 3, 5};
-    int i = 0;
-
-    while (i < 3 && SPEEDS[i] != g_ff_speed) {
-        i++;
-    }
-    g_ff_speed = SPEEDS[(i + 1) % 4];
+    g_ff_speed = g_ff_speed >= 5 ? 1 : g_ff_speed + 1;
 }
 
 /* Fast travel's doors: every stage's ways out (its exits, and the warps and
