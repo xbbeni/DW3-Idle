@@ -144,6 +144,14 @@ int VSync(int mode) {
     return s_vsyncs;
 }
 
+/* Where a division came from, for the log: WebAssembly has no return
+   address without Emscripten's offset converter (an extra download) */
+#ifdef __EMSCRIPTEN__
+#define CALLER NULL
+#else
+#define CALLER __builtin_return_address(0)
+#endif
+
 /* The game's divisions by a variable (build.py's mips_divisions): what the
    R3000 gives where x86 would trap. By zero, the quotient is -1 (1 for a
    negative signed dividend, all ones unsigned) and the remainder the dividend;
@@ -161,7 +169,7 @@ static void div_trap(const char *op, int32_t n, const void *from) {
 
 int32_t native_sdiv(int32_t n, int32_t d) {
     if (d == 0) {
-        div_trap("sdiv", n, __builtin_return_address(0));
+        div_trap("sdiv", n, CALLER);
         return n < 0 ? 1 : -1;
     }
     return d == -1 ? (int32_t)(0u - (uint32_t)n) : n / d;
@@ -169,7 +177,7 @@ int32_t native_sdiv(int32_t n, int32_t d) {
 
 int32_t native_srem(int32_t n, int32_t d) {
     if (d == 0) {
-        div_trap("srem", n, __builtin_return_address(0));
+        div_trap("srem", n, CALLER);
         return n;
     }
     return d == -1 ? 0 : n % d;
@@ -177,7 +185,7 @@ int32_t native_srem(int32_t n, int32_t d) {
 
 uint32_t native_udiv(uint32_t n, uint32_t d) {
     if (d == 0) {
-        div_trap("udiv", (int32_t)n, __builtin_return_address(0));
+        div_trap("udiv", (int32_t)n, CALLER);
         return 0xFFFFFFFFu;
     }
     return n / d;
@@ -185,7 +193,7 @@ uint32_t native_udiv(uint32_t n, uint32_t d) {
 
 uint32_t native_urem(uint32_t n, uint32_t d) {
     if (d == 0) {
-        div_trap("urem", (int32_t)n, __builtin_return_address(0));
+        div_trap("urem", (int32_t)n, CALLER);
         return n;
     }
     return n % d;
