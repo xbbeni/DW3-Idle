@@ -166,17 +166,20 @@
     $('canvas').focus();
     setInterval(() => sync(false), 10000);
     addEventListener('pagehide', () => FS.syncfs(false, () => {}));
+    // before the game runs: the one call into the module the buttons need
+    const ffIndex = Module.ccall('native_web_speed_address', 'number', [], []) >> 2;
     callMain([]);
     const speed = $('speed');
     speed.style.display = 'flex';
     const mark = (x) => speed.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.x === x));
     speed.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
-      Module.ccall('native_web_set_speed', null, ['number'], [+b.dataset.x]);
+      Module.HEAP32[ffIndex] = +b.dataset.x;
       mark(+b.dataset.x);
       $('canvas').focus(); // the keys go back to the game
     }));
     // Tab and the options menu change it too: follow them
-    setInterval(() => mark(Module.ccall('native_web_speed', 'number', [], [])), 500);
+    mark(1);
+    setInterval(() => mark(Module.HEAP32[ffIndex]), 500);
   });
   $('forget').addEventListener('click', async () => {
     if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
