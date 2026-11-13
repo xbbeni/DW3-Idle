@@ -45,6 +45,7 @@ LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GR
            "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=4MB",
            "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0"]
 
+COMMON = re.compile(r"^(@\S+) = common ", re.M)
 GLOBAL_DEF = re.compile(r"^@([\w.$]+) = (?!.*\b(?:internal|private)\b)(?!.*\bexternal\b)")
 FUNC_DEF = re.compile(r"^define (?!.*\b(?:internal|private)\b)[^@]*@([\w.$]+)\(")
 
@@ -64,7 +65,11 @@ def emit_ir(src):
     r = run([EMCC, *build.GAME_CFLAGS, "-S", "-emit-llvm", f"-I{src.parent}", real, "-o", ll])
     if r.returncode != 0:
         return rel, None, r.stderr
-    ll.write_text(build.mips_divisions(build.widen_returns(ll.read_text())))
+    ll_text = build.mips_divisions(build.widen_returns(ll.read_text()))
+    # common symbols become plain definitions, as build.py's overlay_sections
+    # does (wasm-ld doesn't merge them with the other files' references)
+    ll_text = COMMON.sub(r"\1 = ", ll_text)
+    ll.write_text(ll_text)
     return rel, ll, None
 
 
