@@ -46,6 +46,7 @@
   console.log('dw3: page script started');
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
+  const ROM_FILENAME = 'Digimon World 2003 (Europe) (En,Fr,De,Es,It).chd';
   
   let synced = Promise.resolve();
   function sync(load) {
@@ -56,12 +57,12 @@
     return (await navigator.storage.getDirectory()).getDirectoryHandle(OPFS_DIR, { create });
   }
   async function extracted() {
-    try { await (await opfsDir(false)).getFileHandle('DMW3.chd'); return true; } catch (e) { return false; }
+    try { await (await opfsDir(false)).getFileHandle(ROM_FILENAME); return true; } catch (e) { return false; }
   }
 
   async function downloadAndStoreROM() {
     try {
-      status('A descarregar a ROM (DMW3.chd - 400MB)...');
+      status('A descarregar a ROM do Hugging Face (400MB)...');
       const romUrl = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
       
       const response = await fetch(romUrl);
@@ -92,7 +93,7 @@
 
       status('A guardar a ROM no navegador (OPFS)…');
       const root = await opfsDir(true);
-      const handle = await root.getFileHandle('DMW3.chd', { create: true });
+      const handle = await root.getFileHandle(ROM_FILENAME, { create: true });
       const writable = await handle.createWritable();
       await writable.write(chunksAll);
       await writable.close();
