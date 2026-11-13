@@ -17,7 +17,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
+#include <wchar.h>
+#define _fseeki64 fseeko
+#define _ftelli64 ftello
+#else
 #include <windows.h>
+#endif
 
 #include "extract.h"
 
@@ -37,12 +43,20 @@ static long s_sectors;
 
 /* fopen with the UTF-8 paths SDL's dialogs and drops give, whatever the system's code page */
 static FILE *open_utf8(const char *path, const wchar_t *mode) {
+#ifdef __EMSCRIPTEN__
+    /* the browser's file system takes UTF-8 paths as they are */
+    char narrow[8];
+
+    wcstombs(narrow, mode, sizeof narrow);
+    return fopen(path, narrow);
+#else
     wchar_t wide[1200];
 
     if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide, SDL_arraysize(wide)) == 0) {
         return NULL;
     }
     return _wfopen(wide, mode);
+#endif
 }
 
 /* The 2048 user bytes of `count` sectors (Mode 2 Form 1 in a raw image) */
@@ -168,6 +182,10 @@ static void remove_tmp(const char *tmp) {
 }
 
 static int enough_space(const char *data) {
+#ifdef __EMSCRIPTEN__
+    (void)data;
+    return 1; /* the browser's storage quota is checked by the writes */
+#else
     wchar_t wide[1200];
     ULARGE_INTEGER free_bytes;
 
@@ -176,6 +194,7 @@ static int enough_space(const char *data) {
         return 1; /* can't tell: the writes will */
     }
     return free_bytes.QuadPart >= NEED_BYTES;
+#endif
 }
 
 /* The complete game from tmp into data: the marker goes first and comes back last */

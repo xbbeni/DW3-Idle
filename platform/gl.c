@@ -10,6 +10,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
+#include <string.h>
 
 /* --- the functions, through SDL (opengl32 only exports 1.1) --- */
 #define GL_FUNCS(X)                                                                                                  \
@@ -499,7 +500,20 @@ static GLuint shader(GLenum type, const char *src) {
     GLint ok;
     char log[1024];
 
+#ifdef __EMSCRIPTEN__
+    /* WebGL 2 takes GLSL ES 3.00: the same language as 330 core for what
+       these shaders use, with precisions to state */
+    static const char es[] = "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+                             "precision highp usampler2D;\nprecision highp sampler2D;\n";
+    const char *srcs[2] = {es, src};
+
+    if (strncmp(src, "#version 330 core\n", 18) == 0) {
+        srcs[1] = src + 18;
+    }
+    GL(glShaderSource)(s, 2, srcs, NULL);
+#else
     GL(glShaderSource)(s, 1, &src, NULL);
+#endif
     GL(glCompileShader)(s);
     GL(glGetShaderiv)(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
