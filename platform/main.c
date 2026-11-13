@@ -300,6 +300,7 @@ int main(int argc, char **argv) {
     /* the first run reads the player's disc; then the game's tables, before
        anything touches the game's variables (fill.c) */
     snprintf(exe, sizeof exe, "%s/SLES_039.36", s_data);
+    WEB_FETCH(exe);
     if (!SDL_GetPathInfo(exe, NULL)) {
         LOG("no game in %s", s_data);
         if (argc > 1) {

@@ -138,11 +138,13 @@ void movie_stream_start(int pos) {
 
     movie_stream_stop();
     snprintf(path, sizeof path, "%s/files/%04d.str", data_dir(), pos / SPAN);
+    WEB_FETCH(path);
     s_file = fopen(path, "rb");
     s_cooked = s_file == NULL;
     if (s_cooked) {
         /* from a plain .iso: the 2048-byte copy, its pictures without the sound */
         snprintf(path, sizeof path, "%s/files/%04d.bin", data_dir(), pos / SPAN);
+        WEB_FETCH(path);
         if ((s_file = fopen(path, "rb")) == NULL) {
             LOG("no movie %s", path);
             return;

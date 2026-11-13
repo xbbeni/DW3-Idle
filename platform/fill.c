@@ -11,6 +11,8 @@ void native_log(const char *fmt, ...);
 #ifdef __EMSCRIPTEN__
 #include <stdint.h>
 
+int native_web_fetch(const char *path); /* web.c */
+
 /* The browser build: tools/web_fill.py zeroed the game's tables in dw3.wasm
    and listed them in dw3.fill (next to the page, in the virtual file
    system's root) by address, which in WebAssembly is the pointer itself */
@@ -33,6 +35,7 @@ int native_fill(const char *data) {
                 fclose(f);
             }
             snprintf(file, sizeof file, "%s/%s", data, src);
+            native_web_fetch(file);
             f = fopen(file, "rb");
             strcpy(open, src);
         }
