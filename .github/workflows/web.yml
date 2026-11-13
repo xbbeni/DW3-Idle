@@ -43,3 +43,28 @@ jobs:
       - name: report
         if: always()
         run: cat native/build-web/report.md 2>/dev/null || true
+      - name: the page (the build's own files; none of the game)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          mkdir site
+          cp native/build-web/index.html native/build-web/index.js native/build-web/index.wasm native/build-web/dw3.fill site/
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          path: site
+
+  deploy:
+    # GitHub Pages, from main: the page the game is played on
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

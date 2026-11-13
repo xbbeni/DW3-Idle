@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DW3 (web)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b0f1a; color: #dfe6f3; font: 15px/1.5 system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  header { width: min(960px, 100%); padding: 16px; box-sizing: border-box; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .note { color: #8a97ad; font-size: 13px; margin: 0; }
+  #panel { width: min(960px, 100%); padding: 0 16px 12px; box-sizing: border-box; }
+  #status { margin: 8px 0; min-height: 1.5em; }
+  button, label.btn { background: #2b5bd7; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px;
+                      font: inherit; cursor: pointer; display: inline-block; }
+  button:disabled { background: #39425a; cursor: default; }
+  input[type=file] { display: none; }
+  canvas { display: none; background: #000; width: min(960px, 100vw); aspect-ratio: 4 / 3; outline: none; }
+  .hidden { display: none !important; }
+  small.link { color: #8a97ad; cursor: pointer; text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DW3 (web)</h1>
+  <p class="note">Projeto de fã, sem relação com a Bandai Namco. Nada do jogo vem com esta página: ela lê o
+    disco do próprio jogador (Digimon World 2003, Europa, SLES-03936, em .cue + .bin), e o que for lido
+    fica só neste navegador.</p>
+</header>
+<div id="panel">
+  <div id="status">Carregando…</div>
+  <div id="pick" class="hidden">
+    <label class="btn" for="files">Escolher o .cue e o .bin do teu disco</label>
+    <input id="files" type="file" multiple accept=".cue,.bin,.iso">
+  </div>
+  <div id="play" class="hidden">
+    <button id="start">Jogar</button>
+    <small class="link" id="forget">apagar os dados do jogo deste navegador</small>
+  </div>
+</div>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const status = (t) => { $('status').textContent = t; };
+  const ROOT = '/dw3', DATA = ROOT + '/data';
+  let synced = Promise.resolve();
+  function sync(load) {
+    synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
+    return synced;
+  }
+  var Module = {
+    canvas: $('canvas'),
+    noInitialRun: true,
+    print: (t) => console.log(t),
+    printErr: (t) => console.warn(t),
+    preRun: [() => {
+      FS.mkdir(ROOT);
+      FS.mount(IDBFS, {}, ROOT);
+      addRunDependency('dw3-storage');
+      sync(true).then(() => removeRunDependency('dw3-storage'));
+      addRunDependency('dw3-fill');
+      fetch('dw3.fill').then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then((t) => FS.writeFile('/dw3.fill', t))
+        .catch((e) => status('Não consegui baixar dw3.fill (' + e + ').'))
+        .finally(() => removeRunDependency('dw3-fill'));
+    }],
+    onRuntimeInitialized: () => {
+      if (FS.analyzePath(DATA + '/SLES_039.36').exists) {
+        status('O jogo já foi lido do teu disco.');
+        $('play').classList.remove('hidden');
+      } else {
+        status('Primeira vez: escolhe os dois arquivos da imagem do teu disco.');
+        $('pick').classList.remove('hidden');
+      }
+    },
+  };
+  $('files').addEventListener('change', async (ev) => {
+    const files = [...ev.target.files];
+    const cue = files.find((f) => /\.cue$/i.test(f.name)) || files.find((f) => /\.iso$/i.test(f.name));
+    if (!cue) { status('Falta o arquivo .cue (ou .iso).'); return; }
+    $('pick').classList.add('hidden');
+    try { FS.mkdir('/disc'); } catch (e) {}
+    for (const f of files) {
+      status('Lendo ' + f.name + '…');
+      FS.writeFile('/disc/' + f.name, new Uint8Array(await f.arrayBuffer()));
+    }
+    status('Extraindo o jogo (pode levar alguns minutos)…');
+    await new Promise((r) => setTimeout(r, 50));
+    const code = callMain(['--extract', '/disc/' + cue.name]);
+    for (const f of files) { try { FS.unlink('/disc/' + f.name); } catch (e) {} }
+    if (code !== 0) {
+      status('A leitura falhou (código ' + code + '). Confere se é a versão europeia e se o .bin está junto do .cue.');
+      $('pick').classList.remove('hidden');
+      return;
+    }
+    status('Salvando no navegador…');
+    await sync(false);
+    location.reload();
+  });
+  $('start').addEventListener('click', () => {
+    $('panel').classList.add('hidden');
+    $('canvas').style.display = 'block';
+    $('canvas').focus();
+    setInterval(() => sync(false), 10000);
+    addEventListener('pagehide', () => FS.syncfs(false, () => {}));
+    callMain([]);
+  });
+  $('forget').addEventListener('click', () => {
+    if (!confirm('Apagar os dados do jogo e os saves deste navegador?')) return;
+    indexedDB.deleteDatabase(ROOT);
+    location.reload();
+  });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

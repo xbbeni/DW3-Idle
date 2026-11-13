@@ -4,6 +4,9 @@
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include "platform.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 extern int NTSC_MODE; /* the game's, src/main/data/eu_settings.c */
 void pad_update(void);
@@ -51,9 +54,20 @@ static void vblank(void) {
             s_next_ns = now; /* first one, or we fell behind (debugger): don't catch up */
         } else if (now < s_next_ns) {
             perf_begin(PF_WAIT);
+#ifdef __EMSCRIPTEN__
+            /* the browser draws only when the page gets control back: the
+               wait is a sleep that returns to it (ASYNCIFY) */
+            emscripten_sleep((unsigned)((s_next_ns - now) / 1000000ull));
+#else
             SDL_DelayPrecise(s_next_ns - now);
+#endif
             perf_end(PF_WAIT);
         }
+#ifdef __EMSCRIPTEN__
+        else {
+            emscripten_sleep(0); /* behind: still give the page its turn */
+        }
+#endif
         s_next_ns += period_ns();
     }
     s_vsyncs++;
@@ -63,7 +77,11 @@ static void vblank(void) {
     }
     while (menu_active()) { /* the game waits for the options menu */
         present_frame();
+#ifdef __EMSCRIPTEN__
+        emscripten_sleep(16);
+#else
         SDL_Delay(16);
+#endif
         if (!pump_events()) {
             exit(0);
         }

@@ -174,13 +174,31 @@ def wasm_unit(obj):
     return p.rsplit("/", 1)[-1]
 
 
+MAP_ANY_IN = re.compile(r"^\s*[0-9a-f-]+\s+[0-9a-f]+\s+[0-9a-f]+\s+(.+?):\((.+)\)\s*$")
+MAP_SYM = re.compile(r"^\s*([0-9a-f]+)\s+[0-9a-f]+\s+([0-9a-f]+)\s+(\S+)\s*$")
+SYM_COLUMN = 38  # the map's Symbol column starts past it (Out and In are left of it)
+
+
 def link_map(text):
-    """(unit, segment name) -> (address, size, kind) from wasm-ld's -Map"""
-    out = {}
+    """(unit, name) -> (address, size, kind) from wasm-ld's -Map: a variable's
+    own segment (.data.<name>), or, in a named segment many share (build_web.py's
+    dw3_m...), the symbol lines under it"""
+    out, unit = {}, None
     for line in text.splitlines():
         m = MAP_IN.match(line)
         if m:
             out[(wasm_unit(m.group(3)), m.group(5))] = (int(m.group(1), 16), int(m.group(2), 16), m.group(4))
+            unit = None
+            continue
+        m = MAP_ANY_IN.match(line)
+        if m:
+            unit = wasm_unit(m.group(1)) if m.group(2).startswith("dw3_") else None
+            continue
+        m = MAP_SYM.match(line)
+        if m and unit and line.index(m.group(3)) > SYM_COLUMN:
+            out.setdefault((unit, m.group(3)), (int(m.group(1), 16), int(m.group(2), 16), "data"))
+        elif m and line.index(m.group(3)) <= SYM_COLUMN:
+            unit = None
     return out
 
 
@@ -241,7 +259,8 @@ def main(upstream, web):
     where = link_map((web / "link.map").read_text())
     variables = flexible_sizes(exe_variables(exe), where)
     parts, outside = pieces(runs, variables)
-    wasm = bytearray((web / "dw3.wasm").read_bytes())
+    wasm_path = next(web.glob("*.wasm"))
+    wasm = bytearray(wasm_path.read_bytes())
     segs = data_segments(wasm)
     seg_starts = [s[0] for s in segs]
 
@@ -270,7 +289,7 @@ def main(upstream, web):
         wasm[fo:fo + n] = bytes(n)
         lines.append(f"{addr + at:x} {n} {src} {off}\n")
         done += n
-    (web / "dw3.wasm").write_bytes(wasm)
+    wasm_path.write_bytes(wasm)
     (web / "dw3.fill").write_text(f"crc {crc:08x} {len(lines)}\n" + "".join(lines))
 
     total = sum(n for _, n, _, _ in runs)

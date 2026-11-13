@@ -210,6 +210,9 @@ static void read_ini(int data_only) {
 
 /* No game yet: the launcher, next to the exe, reads the disc. Not if it started this very run, which would loop. */
 static int open_launcher(void) {
+#ifdef __EMSCRIPTEN__
+    return 0; /* the page reads the disc */
+#endif
     char path[1100];
     const char *args[] = {path, NULL};
     SDL_Process *launcher;
@@ -278,9 +281,14 @@ int main(int argc, char **argv) {
     if (env != NULL) {
         snprintf(s_data, sizeof s_data, "%s", env);
     } else if (s_data[0] == 0) {
+#ifdef __EMSCRIPTEN__
+        /* the browser build: the page keeps it in IndexedDB at /dw3 (platform/web/shell.html) */
+        snprintf(s_data, sizeof s_data, "/dw3/data");
+#else
         /* data/ next to the exe, or native/data from native/build */
         snprintf(s_data, sizeof s_data, "%s../data/SLES_039.36", SDL_GetBasePath());
         snprintf(s_data, sizeof s_data, SDL_GetPathInfo(s_data, NULL) ? "%s../data" : "%sdata", SDL_GetBasePath());
+#endif
     }
     if (argc == 3 && SDL_strcmp(argv[1], "--extract") == 0) {
         int e = native_extract(argv[2], s_data, NULL);
