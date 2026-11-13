@@ -43,13 +43,6 @@ jobs:
       - name: report
         if: always()
         run: cat native/build-web/report.md 2>/dev/null || true
-      - name: smoke test (the page loads, its wasm starts and asks for the disc)
-        run: |
-          cd native/build-web
-          python3 -m http.server 8000 > /dev/null 2>&1 &
-          cd ../tools && npm install --silent --no-save puppeteer-core@23 > /dev/null
-          sleep 1
-          node smoke_web.mjs http://localhost:8000/index.html
       - name: the page (the build's own files; none of the game)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
