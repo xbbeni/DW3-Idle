@@ -46,6 +46,9 @@ LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GR
            "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=1MB",
            "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0",
            "-sINVOKE_RUN=0", "-sEXPORTED_RUNTIME_METHODS=callMain,FS",
+           # while the web build is being brought up: function names in the
+           # browser's stack traces, and Emscripten's own checks
+           "--profiling-funcs", "-sASSERTIONS=1", "-sSTACK_OVERFLOW_CHECK=2",
            f"--shell-file={NATIVE / 'platform/web/shell.html'}"]
 
 COMMON = re.compile(r"^(@\S+) = common ", re.M)

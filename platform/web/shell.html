@@ -50,6 +50,12 @@
     synced = synced.then(() => new Promise((ok) => FS.syncfs(load, (e) => { if (e) console.warn('syncfs', e); ok(); })));
     return synced;
   }
+  // an error shows on the page too, for a screenshot
+  addEventListener('error', (e) => status('Erro: ' + (e.message || e)));
+  addEventListener('unhandledrejection', (e) => {
+    const r = e.reason || {};
+    status('Erro: ' + (r.message || r) + ' | ' + String(r.stack || '').split('\n').slice(0, 8).join(' | '));
+  });
   var Module = {
     canvas: $('canvas'),
     noInitialRun: true,
@@ -88,7 +94,14 @@
     }
     status('Extraindo o jogo (pode levar alguns minutos)…');
     await new Promise((r) => setTimeout(r, 50));
-    const code = callMain(['--extract', '/disc/' + cue.name]);
+    let code;
+    try {
+      code = callMain(['--extract', '/disc/' + cue.name]);
+    } catch (e) {
+      status('Erro na extração: ' + e.message + ' | ' + String(e.stack || '').split('\n').slice(0, 8).join(' | '));
+      console.error(e);
+      return;
+    }
     for (const f of files) { try { FS.unlink('/disc/' + f.name); } catch (e) {} }
     if (code !== 0) {
       status('A leitura falhou (código ' + code + '). Confere se é a versão europeia e se o .bin está junto do .cue.');
