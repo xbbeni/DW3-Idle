@@ -35,8 +35,13 @@ build.GAME_CFLAGS = [f.replace(str(NATIVE / "build" / "patched"), str(build.PATC
 
 # platform files that are Windows-only and have no web counterpart yet
 SKIP_PLATFORM = {"crash.c"}
-PLATFORM_CFLAGS = ["-std=c11", "-c", "-O2", "-g", "-Wall", "-Wno-unused-parameter", "-D_GNU_SOURCE", "--use-port=sdl3"]
-LDFLAGS = ["--use-port=sdl3", "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GROWTH=1",
+# SDL 3.4.16 built for the web (SDL_WEB: its install prefix, as the workflow
+# makes it), the same version as the exe's; else Emscripten's own SDL3 port
+SDL_WEB = os.environ.get("SDL_WEB")
+SDL_C = [f"-I{SDL_WEB}/include"] if SDL_WEB else ["--use-port=sdl3"]
+SDL_L = [f"-L{SDL_WEB}/lib", "-lSDL3"] if SDL_WEB else ["--use-port=sdl3"]
+PLATFORM_CFLAGS = ["-std=c11", "-c", "-O2", "-g", "-Wall", "-Wno-unused-parameter", "-D_GNU_SOURCE", *SDL_C]
+LDFLAGS = [*SDL_L, "-sUSE_WEBGL2=1", "-sMAX_WEBGL_VERSION=2", "-sALLOW_MEMORY_GROWTH=1",
            "-sINITIAL_MEMORY=64MB", "-sASYNCIFY=1", "-sASYNCIFY_STACK_SIZE=1048576", "-sSTACK_SIZE=4MB",
            "-sFORCE_FILESYSTEM=1", "-lidbfs.js", "-sEXIT_RUNTIME=0"]
 

@@ -23,6 +23,14 @@ jobs:
         with:
           version: 4.0.10
           actions-cache-folder: emsdk-cache
+      - name: SDL 3.4.16 for the web
+        run: |
+          git clone -q --depth 1 --branch release-3.4.16 https://github.com/libsdl-org/SDL sdl-src
+          emcmake cmake -S sdl-src -B sdl-build -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="$PWD/sdl-web" > /dev/null
+          cmake --build sdl-build -j"$(nproc)" > /dev/null
+          cmake --install sdl-build > /dev/null
+          echo "SDL_WEB=$PWD/sdl-web" >> "$GITHUB_ENV"
       - name: build
         run: python3 native/tools/build_web.py
       - name: report
