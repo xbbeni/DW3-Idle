@@ -9,12 +9,45 @@
 void native_log(const char *fmt, ...);
 
 #ifdef __EMSCRIPTEN__
-/* TODO(web): the browser build keeps the game's tables in the wasm for now;
-   before it is published they must be zeroed and filled from the player's
-   disc like the exe's (docs/web.md) */
+#include <stdint.h>
+
+/* The browser build: tools/web_fill.py zeroed the game's tables in dw3.wasm
+   and listed them in dw3.fill (next to the page, in the virtual file
+   system's root) by address, which in WebAssembly is the pointer itself */
 int native_fill(const char *data) {
-    (void)data;
-    native_log("web: the game's tables are not filled from the disc yet");
+    char src[64], open[64] = "", file[1100];
+    unsigned long want, addr, off, count, crc = 0, len;
+    FILE *fill, *f = NULL;
+    int ok = 1;
+
+    fill = fopen("/dw3.fill", "r");
+    if (fill == NULL || fscanf(fill, "crc %lx %lu", &want, &count) != 2) {
+        native_log("no /dw3.fill: it comes with the page");
+        return 0;
+    }
+    while (ok && fscanf(fill, "%lx %lu %63s %lu", &addr, &len, src, &off) == 4) {
+        uint8_t *at = (uint8_t *)(uintptr_t)addr;
+
+        if (strcmp(src, open) != 0) {
+            if (f != NULL) {
+                fclose(f);
+            }
+            snprintf(file, sizeof file, "%s/%s", data, src);
+            f = fopen(file, "rb");
+            strcpy(open, src);
+        }
+        ok = f != NULL && fseek(f, (long)off, SEEK_SET) == 0 && fread(at, 1, len, f) == len;
+        crc = SDL_crc32((Uint32)crc, at, len);
+        count--;
+    }
+    if (f != NULL) {
+        fclose(f);
+    }
+    fclose(fill);
+    if (!ok || count != 0 || crc != want) {
+        native_log("the game's tables from %s don't match (%s): extract the disc again", data, ok ? "checksum" : src);
+        return 0;
+    }
     return 1;
 }
 #else

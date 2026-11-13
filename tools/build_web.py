@@ -20,6 +20,7 @@ from pathlib import Path
 
 NATIVE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(NATIVE))
+sys.path.insert(0, str(NATIVE / "tools"))
 # build.py looks for llvm-mingw at import; the web build doesn't use it
 os.environ.setdefault("LLVM_MINGW", str(NATIVE))
 _argv, sys.argv = sys.argv, [sys.argv[0]]
@@ -175,6 +176,7 @@ def main():
     stubs.write_text("")
     objs = game_objs + platform
     html = OUT / "dw3.html"
+    link_map = OUT / "link.map"
     for attempt in range(2):
         stub_obj = OUT / "stubs.o"
         r = run([EMCC, *PLATFORM_CFLAGS, stubs, "-o", stub_obj])
@@ -182,7 +184,7 @@ def main():
             sys.exit(r.stderr)
         rsp = OUT / "objs.rsp"
         rsp.write_text("\n".join(f'"{o}"' for o in objs + [stub_obj]))
-        r = run([EMCC, f"@{rsp}", "-o", html, *LDFLAGS])
+        r = run([EMCC, f"@{rsp}", "-o", html, *LDFLAGS, f"-Wl,-Map={link_map}"])
         if r.returncode == 0:
             break
         missing = sorted(set(re.findall(r"undefined symbol: ([\w$]+)", r.stderr)))
@@ -194,6 +196,17 @@ def main():
     (OUT / "report.md").write_text(
         f"# Web build\n\n{len(game_objs)} game files, {len(platform)} platform files\n\n## Stubbed\n\n"
         + "".join(f"- {line.split('(')[0].split()[-1]}\n" for line in stubs.read_text().splitlines()[1:]))
+    # the game's tables out of dw3.wasm, as asset_scan.py takes them out of
+    # the exe (tools/web_fill.py): UPSTREAM is the unzipped release of the
+    # port at the same game code, whose exe and dw2003.fill say what they are
+    upstream = os.environ.get("UPSTREAM")
+    if not upstream:
+        print("warning: no UPSTREAM: the game's tables are still in dw3.wasm (don't publish this build)")
+    else:
+        import web_fill
+        left = web_fill.main(Path(upstream), OUT)
+        if left:
+            sys.exit(f"{left} bytes of the game left in dw3.wasm (build-web/report.md)")
     print(f"OK {html}")
 
 

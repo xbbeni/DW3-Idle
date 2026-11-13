@@ -3,9 +3,8 @@ on: [push, pull_request]
 
 jobs:
   build:
-    # the browser build (tools/build_web.py); nothing of the game is uploaded:
-    # the wasm still holds the game's tables until platform/fill.c's web
-    # version fills them from the player's disc (docs/web.md)
+    # the browser build (tools/build_web.py), with the game's tables taken out
+    # of dw3.wasm (tools/web_fill.py)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +30,14 @@ jobs:
           cmake --build sdl-build -j"$(nproc)" > /dev/null
           cmake --install sdl-build > /dev/null
           echo "SDL_WEB=$PWD/sdl-web" >> "$GITHUB_ENV"
+      - name: the port's release at the same game code (its exe's debug info and dw2003.fill; none of the game)
+        env:
+          UPSTREAM_TAG: v0.19.5
+        run: |
+          curl -sSLf -o upstream.zip "https://github.com/Feerdus95/dw3-native-port/releases/download/$UPSTREAM_TAG/dw2003-native-$UPSTREAM_TAG.zip"
+          mkdir upstream && unzip -q upstream.zip dw2003.exe dw2003.fill -d upstream
+          pip install -q pyelftools
+          echo "UPSTREAM=$PWD/upstream" >> "$GITHUB_ENV"
       - name: build
         run: python3 native/tools/build_web.py
       - name: report
