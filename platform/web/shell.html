@@ -62,7 +62,7 @@
   async function downloadAndStoreROM() {
     try {
       status('A descarregar a ROM (DMW3.chd - 400MB)...');
-      const romUrl = 'https://github.com/xbbeni/DW3-Idle/releases/download/v1.0-rom/DMW3.chd';
+      const romUrl = 'https://huggingface.co/datasets/xbbeni/dmw3.chd/resolve/main/Digimon%20World%202003%20(Europe)%20(En%2CFr%2CDe%2CEs%2CIt).chd?download=true';
       
       const response = await fetch(romUrl);
       if (!response.ok) throw new Error('Falha no download: ' + response.statusText);
