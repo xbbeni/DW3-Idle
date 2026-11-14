@@ -27,7 +27,7 @@
 <body>
 <header>
   <h1>DW3 (web)</h1>
-  <p class="note">Carregamento e extração automática da ROM integrados.</p>
+  <p class="note">Carregamento e extração automática da ROM (CUE/BIN) integrados.</p>
 </header>
 <div id="panel">
   <div id="status">A preparar o sistema…</div>
@@ -45,8 +45,12 @@
   const $ = (id) => document.getElementById(id);
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
-  const ROM_FILENAME = 'DMW3.chd';
-  const ROM_URL = 'https://huggingface.co/datasets/xbbeni/dmw3/resolve/main/DMW3.chd?download=true';
+  
+  const ROM_CUE_FILENAME = 'DMW3.cue';
+  const ROM_BIN_FILENAME = 'DMW3.bin';
+  
+  const CUE_URL = 'https://huggingface.co/datasets/xbbeni/dmw3/resolve/main/DMW3.cue?download=true';
+  const BIN_URL = 'https://huggingface.co/datasets/xbbeni/dmw3/resolve/main/DMW3.bin?download=true';
 
   let synced = Promise.resolve();
   function sync(load) {
@@ -86,53 +90,62 @@
     }
   }
 
-async function downloadAndExtract() {
+  async function downloadFile(url, destPath, label) {
+    status(`A descarregar ${label} do Hugging Face...`);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Falha ao descarregar ${label}: ` + response.statusText);
+
+    const reader = response.body.getReader();
+    const contentLength = +response.headers.get('Content-Length');
+    let receivedLength = 0;
+    let chunks = [];
+
+    while(true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      receivedLength += value.length;
+      if (contentLength) {
+        let percent = Math.round((receivedLength / contentLength) * 100);
+        status(`A descarregar ${label}… ${percent}%`);
+      }
+    }
+
+    let chunksAll = new Uint8Array(receivedLength);
+    let position = 0;
+    for(let chunk of chunks) {
+      chunksAll.set(chunk, position);
+      position += chunk.length;
+    }
+
+    FS.writeFile(destPath, chunksAll);
+  }
+
+  async function downloadAndExtract() {
     try {
-      status('A descarregar a ROM do Hugging Face (400MB)...');
-      const response = await fetch(ROM_URL);
-      if (!response.ok) throw new Error('Falha no download: ' + response.statusText);
-
-      const reader = response.body.getReader();
-      const contentLength = +response.headers.get('Content-Length');
-      let receivedLength = 0;
-      let chunks = [];
-
-      while(true) {
-        const {done, value} = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-        if (contentLength) {
-          let percent = Math.round((receivedLength / contentLength) * 100);
-          status(`A descarregar a ROM… ${percent}%`);
-        }
-      }
-
-      let chunksAll = new Uint8Array(receivedLength);
-      let position = 0;
-      for(let chunk of chunks) {
-        chunksAll.set(chunk, position);
-        position += chunk.length;
-      }
-
-      status('A injetar ROM no emulador para extração…');
       try { FS.mkdir('/disc'); } catch (e) {}
-      // Usa o nome exato do arquivo do Hugging Face aqui
-      FS.writeFile('/disc/' + ROM_FILENAME, chunksAll);
+
+      // 1. Baixa o arquivo .cue de configuração
+      await downloadFile(CUE_URL, '/disc/' + ROM_CUE_FILENAME, 'DMW3.cue');
+
+      // 2. Baixa o arquivo .bin grande com os dados do jogo
+      await downloadFile(BIN_URL, '/disc/' + ROM_BIN_FILENAME, 'DMW3.bin');
 
       status('A extrair os dados do jogo (pode levar alguns segundos)…');
       await new Promise((r) => setTimeout(r, 50));
       
       let code;
       try {
-        // A linha que você perguntou fica exatamente aqui dentro:
-        code = callMain(['--extract', '/disc/' + ROM_FILENAME]);
+        code = callMain(['--extract', '/disc/' + ROM_CUE_FILENAME]);
       } catch (e) {
         console.error(e);
         throw new Error('Erro na extração: ' + e.message);
       }
 
-      try { FS.unlink('/disc/' + ROM_FILENAME); } catch (e) {}
+      try { 
+        FS.unlink('/disc/' + ROM_CUE_FILENAME); 
+        FS.unlink('/disc/' + ROM_BIN_FILENAME); 
+      } catch (e) {}
 
       if (code !== 0) {
         throw new Error('A extração falhou com código ' + code);
