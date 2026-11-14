@@ -46,11 +46,11 @@
   const status = (t) => { $('status').textContent = t; };
   const ROOT = '/dw3', DATA = ROOT + '/data', SAVES = ROOT + '/saves', OPFS_DIR = 'dw3data';
   
-const ROM_CUE_FILENAME = 'DMW3.cue';
+  const ROM_CUE_FILENAME = 'DMW3.cue';
   const ROM_BIN_FILENAME = 'DMW3.bin';
   
-  const CUE_URL = 'https://huggingface.co/xbbeni/dmw3/raw/main/DMW3.cue';
-  const BIN_URL = 'https://huggingface.co/xbbeni/dmw3/raw/main/DMW3.bin';
+  const CUE_URL = 'https://huggingface.co/datasets/xbbeni/dmw3/resolve/main/DMW3.cue?download=true';
+  const BIN_URL = 'https://huggingface.co/datasets/xbbeni/dmw3/resolve/main/DMW3.bin?download=true';
 
   let synced = Promise.resolve();
   function sync(load) {
